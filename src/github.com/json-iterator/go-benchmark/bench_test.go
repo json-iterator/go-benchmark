@@ -48,10 +48,8 @@ func Benchmark_jsoniter(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")
 		iter := jsoniter.Parse(file, 4096)
-		count := 0
 		for iter.ReadArray() {
 			iter.Skip()
-			count++
 		}
 		file.Close()
 	}
