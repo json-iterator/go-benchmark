@@ -1,6 +1,19 @@
 {
 	"comment": "",
 	"ignore": "test",
-	"package": [],
+	"package": [
+		{
+			"checksumSHA1": "EuNbVG7KA/TaRB9h9defwX6ugeY=",
+			"path": "github.com/json-iterator/go",
+			"revision": "ce5b193569721dc6662974c5e1b16c577e255bec",
+			"revisionTime": "2016-12-02T03:22:20Z"
+		},
+		{
+			"checksumSHA1": "+ajZXCpD7wIHE4F9jD8/tO+shBo=",
+			"path": "github.com/ugorji/go/codec",
+			"revision": "9c7f9b7a2bc3a520f7c7b30b34b7f85f47fe27b6",
+			"revisionTime": "2016-11-30T06:17:42Z"
+		}
+	],
 	"rootPath": "github.com"
 }
