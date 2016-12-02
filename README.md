@@ -26,15 +26,15 @@ func Benchmark_stardard_lib(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")
-		bytes, _ := ioutil.ReadAll(file)
-		file.Close()
 		result := []struct{}{}
-		json.Unmarshal(bytes, &result)
+		decoder := json.NewDecoder(file)
+		decoder.Decode(&result)
+		file.Close()
 	}
 }
 ```
 
-5	 224364066 ns/op	71466916 B/op	  272474 allocs/op
+5	 215547514 ns/op	71467118 B/op	  272476 allocs/op
 
 # json iterator
 ```
@@ -43,11 +43,9 @@ func Benchmark_jsoniter(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")
-		iter := jsoniter.Parse(file, 4096)
-		count := 0
+		iter := jsoniter.Parse(file, 1024)
 		for iter.ReadArray() {
 			iter.Skip()
-			count++
 		}
 		file.Close()
 	}

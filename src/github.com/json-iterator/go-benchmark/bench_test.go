@@ -6,7 +6,6 @@ import (
 	"github.com/json-iterator/go"
 	"os"
 	"fmt"
-	"io/ioutil"
 	"encoding/json"
 	"bufio"
 )
@@ -36,10 +35,10 @@ func Benchmark_stardard_lib(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")
-		bytes, _ := ioutil.ReadAll(file)
-		file.Close()
 		result := []struct{}{}
-		json.Unmarshal(bytes, &result)
+		decoder := json.NewDecoder(file)
+		decoder.Decode(&result)
+		file.Close()
 	}
 }
 
@@ -47,7 +46,7 @@ func Benchmark_jsoniter(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")
-		iter := jsoniter.Parse(file, 4096)
+		iter := jsoniter.Parse(file, 1024)
 		for iter.ReadArray() {
 			iter.Skip()
 		}
