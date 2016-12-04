@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "EuNbVG7KA/TaRB9h9defwX6ugeY=",
+			"checksumSHA1": "ayJC437BBffTc4Z1E83YTYsCbNc=",
 			"path": "github.com/json-iterator/go",
-			"revision": "ce5b193569721dc6662974c5e1b16c577e255bec",
-			"revisionTime": "2016-12-02T03:22:20Z"
+			"revision": "cb86934dc85b797c2f0c2f231f3da7d377ef212c",
+			"revisionTime": "2016-12-04T14:50:53Z"
 		},
 		{
 			"checksumSHA1": "+ajZXCpD7wIHE4F9jD8/tO+shBo=",

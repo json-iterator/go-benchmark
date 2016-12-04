@@ -53,3 +53,31 @@ func Benchmark_jsoniter(b *testing.B) {
 ```
 
 10	 110209750 ns/op	    4248 B/op	       5 allocs/op
+
+# standard lib
+
+```
+func Benchmark_struct_by_stardard_lib(b *testing.B) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		sample := SampleStruct{}
+		json.Unmarshal([]byte(`{"field1": 100, "field2": "102"}`), &sample)
+	}
+}
+```
+
+1000000	      1565 ns/op	     496 B/op	      16 allocs/op
+
+# json iterator
+
+```
+func Benchmark_struct_by_jsoniter(b *testing.B) {
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		sample := SampleStruct{}
+		jsoniter.Unmarshal([]byte(`{"field1": 100, "field2": "102"}`), &sample)
+	}
+}
+```
+
+3000000	       552 ns/op	     144 B/op	       5 allocs/op
