@@ -1,5 +1,3 @@
-test file used: https://github.com/json-iterator/test-data/blob/master/large-file.json
-
 * jsonparser: https://github.com/buger/jsonparser
 * jsoniter pull-api: https://github.com/json-iterator/go
 * jsoniter reflect-api: https://github.com/json-iterator/go/blob/master/jsoniter_reflect.go
@@ -47,3 +45,15 @@ https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-it
 | 0 allocs/op | 0 allocs/op       |
 
 This is a pure counting usage. jsonparser is faster
+
+# large file
+
+test file used: https://github.com/json-iterator/test-data/blob/master/large-file.json
+
+| jsonparser     | jsoniter pull-api |
+| ---            | ---               |
+| 52698699 ns/op | 42986271 ns/op    |
+| 67107104 B/op  | 4248 B/op         |
+| 19 allocs/op   | 5 allocs/op       |
+
+The difference here is because jsonparser take []byte as input, but jsoniter can take io.Reader as input.
