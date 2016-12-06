@@ -5,7 +5,26 @@ import (
 	"fmt"
 	"unicode/utf16"
 	"strconv"
+	"unsafe"
 )
+
+var digits []byte
+
+func init() {
+	digits = make([]byte, 256)
+	for i := 0; i < len(digits); i++ {
+		digits[i] = 255
+	}
+	for i := '0'; i <= '9'; i++ {
+		digits[i] = byte(i - '0');
+	}
+	for i := 'a'; i <= 'f'; i++ {
+		digits[i] = byte((i - 'a') + 10);
+	}
+	for i := 'A'; i <= 'F'; i++ {
+		digits[i] = byte((i - 'A') + 10);
+	}
+}
 
 type Iterator struct {
 	reader io.Reader
@@ -37,19 +56,59 @@ func ParseBytes(input []byte) *Iterator {
 	return iter
 }
 
+func (iter *Iterator) Reuse(input []byte) *Iterator {
+	// only for benchmarking
+	iter.reader = nil
+	iter.Error = nil
+	iter.buf = input
+	iter.head = 0
+	iter.tail = len(input)
+	iter.skipWhitespaces()
+	return iter
+}
+
 func ParseString(input string) *Iterator {
 	return ParseBytes([]byte(input))
 }
 
 func (iter *Iterator) skipWhitespaces() {
-	c := iter.readByte()
-	for c == ' ' || c == '\n' {
-		c = iter.readByte()
+	for {
+		for i := iter.head; i < iter.tail; i++ {
+			c := iter.buf[i]
+			switch c {
+			case ' ', '\n', '\t', 'r':
+				continue
+			}
+			iter.head = i
+			return
+		}
+		if !iter.loadMore() {
+			return
+		}
 	}
-	iter.unreadByte()
+}
+
+func (iter *Iterator) nextToken() byte {
+	for {
+		for i := iter.head; i < iter.tail; i++ {
+			c := iter.buf[i]
+			switch c {
+			case ' ', '\n', '\t', 'r':
+				continue
+			}
+			iter.head = i+1
+			return c
+		}
+		if !iter.loadMore() {
+			return 0
+		}
+	}
 }
 
 func (iter *Iterator) ReportError(operation string, msg string) {
+	if iter.Error != nil {
+		return
+	}
 	peekStart := iter.head - 10
 	if peekStart < 0 {
 		peekStart = 0
@@ -58,27 +117,49 @@ func (iter *Iterator) ReportError(operation string, msg string) {
 		string(iter.buf[peekStart: iter.head]), string(iter.buf[0:iter.tail]))
 }
 
+func (iter *Iterator) CurrentBuffer() string {
+	peekStart := iter.head - 10
+	if peekStart < 0 {
+		peekStart = 0
+	}
+	return fmt.Sprintf("parsing %v ...%s... at %s", iter.head,
+		string(iter.buf[peekStart: iter.head]), string(iter.buf[0:iter.tail]))
+}
+
 func (iter *Iterator) readByte() (ret byte) {
 	if iter.head == iter.tail {
-		if iter.reader == nil {
-			iter.Error = io.EOF
-			return
+		if iter.loadMore() {
+			ret = iter.buf[iter.head]
+			iter.head++
+			return ret
 		}
-		n, err := iter.reader.Read(iter.buf)
-		if err != nil {
-			iter.Error = err
-			return
-		}
-		if n == 0 {
-			iter.Error = io.EOF
-			return
-		}
-		iter.head = 0
-		iter.tail = n
 	}
 	ret = iter.buf[iter.head]
-	iter.head += 1
+	iter.head++
 	return ret
+}
+
+func (iter *Iterator) loadMore() bool {
+	if iter.reader == nil {
+		iter.Error = io.EOF
+		return false
+	}
+	for {
+		n, err := iter.reader.Read(iter.buf)
+		if n == 0 {
+			if err != nil {
+				iter.Error = err
+				return false
+			} else {
+				// n == 0, err == nil is not EOF
+				continue
+			}
+		} else {
+			iter.head = 0
+			iter.tail = n
+			return true
+		}
+	}
 }
 
 func (iter *Iterator) unreadByte() {
@@ -137,37 +218,26 @@ func (iter *Iterator) ReadUint32() (ret uint32) {
 
 func (iter *Iterator) ReadUint64() (ret uint64) {
 	c := iter.readByte()
-	if iter.Error != nil {
+	v := digits[c]
+	if v == 0 {
+		return 0 // single zero
+	}
+	if v == 255 {
+		iter.ReportError("ReadUint64", "unexpected character")
 		return
 	}
-
-	/* a single zero, or a series of integers */
-	if c == '0' {
-		return 0
-	} else if c >= '1' && c <= '9' {
-		for c >= '0' && c <= '9' {
-			var v byte
-			v = c - '0'
-			if ret >= cutoffUint64 {
-				iter.ReportError("ReadUint64", "overflow")
-				return
-			}
-			ret = ret * uint64(10) + uint64(v)
-			c = iter.readByte()
-			if iter.Error != nil {
-				if iter.Error == io.EOF {
-					break
-				} else {
-					return 0
-				}
-			}
+	for {
+		if ret >= cutoffUint64 {
+			iter.ReportError("ReadUint64", "overflow")
+			return
 		}
-		if iter.Error != io.EOF {
+		ret = ret * 10 + uint64(v)
+		c = iter.readByte()
+		v = digits[c]
+		if v == 255 {
 			iter.unreadByte()
+			break
 		}
-	} else {
-		iter.ReportError("ReadUint64", "expects 0~9")
-		return
 	}
 	return ret
 }
@@ -230,31 +300,62 @@ func (iter *Iterator) ReadInt64() (ret int64) {
 }
 
 func (iter *Iterator) ReadString() (ret string) {
-	str := make([]byte, 0, 10)
+	return string(iter.ReadStringAsBytes())
+}
+
+// Tries to find the end of string
+// Support if string contains escaped quote symbols.
+func stringEnd(data []byte) (int, bool) {
+	escaped := false
+	for i, c := range data {
+		if c == '"' {
+			if !escaped {
+				return i + 1, false
+			} else {
+				j := i - 1
+				for {
+					if j < 0 || data[j] != '\\' {
+						return i + 1, true // even number of backslashes
+					}
+					j--
+					if j < 0 || data[j] != '\\' {
+						break // odd number of backslashes
+					}
+					j--
+
+				}
+			}
+		} else if c == '\\' {
+			escaped = true
+		}
+	}
+
+	return -1, escaped
+}
+
+func (iter *Iterator) ReadStringAsBytes() (ret []byte) {
 	c := iter.readByte()
-	if iter.Error != nil {
+	if c == 'n' {
+		iter.skipNull()
 		return
 	}
-	switch c {
-	case 'n':
-		iter.skipNull()
-		if iter.Error != nil {
-			return
-		}
-		return ""
-	case '"':
-	// nothing
-	default:
+	if c != '"' {
 		iter.ReportError("ReadString", `expects " or n`)
 		return
 	}
-	for {
+	end, escaped := stringEnd(iter.buf[iter.head:iter.tail])
+	if end != -1 && !escaped {
+		ret = iter.buf[iter.head:iter.head+end-1]
+		iter.head += end
+		return ret
+	}
+	str := make([]byte, 0, 8)
+	for iter.Error == nil {
 		c = iter.readByte()
-		if iter.Error != nil {
-			return
+		if c == '"' {
+			return str
 		}
-		switch c {
-		case '\\':
+		if c == '\\' {
 			c = iter.readByte()
 			if iter.Error != nil {
 				return
@@ -314,12 +415,11 @@ func (iter *Iterator) ReadString() (ret string) {
 					`invalid escape char after \`)
 				return
 			}
-		case '"':
-			return string(str)
-		default:
+		} else {
 			str = append(str, c)
 		}
 	}
+	return
 }
 
 func (iter *Iterator) readU4() (ret rune) {
@@ -400,22 +500,17 @@ func appendRune(p []byte, r rune) []byte {
 }
 
 func (iter *Iterator) ReadArray() (ret bool) {
-	iter.skipWhitespaces()
-	c := iter.readByte()
+	c := iter.nextToken()
 	if iter.Error != nil {
 		return
 	}
 	switch c {
 	case 'n': {
 		iter.skipNull()
-		if iter.Error != nil {
-			return
-		}
 		return false // null
 	}
 	case '[': {
-		iter.skipWhitespaces()
-		c = iter.readByte()
+		c = iter.nextToken()
 		if iter.Error != nil {
 			return
 		}
@@ -436,9 +531,41 @@ func (iter *Iterator) ReadArray() (ret bool) {
 	}
 }
 
+func (iter *Iterator) ReadArrayCB(cb func()) {
+	c := iter.nextToken()
+	if c == 'n' {
+		iter.skipNull()
+		return // null
+	}
+	if c != '[' {
+		iter.ReportError("ReadArray", "expect [ or n")
+		return
+	}
+	c = iter.nextToken()
+	if c == ']' {
+		return // []
+	} else {
+		iter.unreadByte()
+	}
+	for {
+		if iter.Error != nil {
+			return
+		}
+		cb()
+		c = iter.nextToken()
+		if c == ']' {
+			return
+		}
+		if c != ',' {
+			iter.ReportError("ReadArray", "expect , or ]")
+			return
+		}
+		iter.skipWhitespaces()
+	}
+}
+
 func (iter *Iterator) ReadObject() (ret string) {
-	iter.skipWhitespaces()
-	c := iter.readByte()
+	c := iter.nextToken()
 	if iter.Error != nil {
 		return
 	}
@@ -451,8 +578,7 @@ func (iter *Iterator) ReadObject() (ret string) {
 		return "" // null
 	}
 	case '{': {
-		iter.skipWhitespaces()
-		c = iter.readByte()
+		c = iter.nextToken()
 		if iter.Error != nil {
 			return
 		}
@@ -461,11 +587,7 @@ func (iter *Iterator) ReadObject() (ret string) {
 			return "" // end of object
 		case '"':
 			iter.unreadByte()
-			field := iter.readObjectField()
-			if iter.Error != nil {
-				return
-			}
-			return field
+			return iter.readObjectField()
 		default:
 			iter.ReportError("ReadObject", `expect " after {`)
 			return
@@ -473,11 +595,7 @@ func (iter *Iterator) ReadObject() (ret string) {
 	}
 	case ',':
 		iter.skipWhitespaces()
-		field := iter.readObjectField()
-		if iter.Error != nil {
-			return
-		}
-		return field
+		return iter.readObjectField()
 	case '}':
 		return "" // end of object
 	default:
@@ -487,12 +605,12 @@ func (iter *Iterator) ReadObject() (ret string) {
 }
 
 func (iter *Iterator) readObjectField() (ret string) {
-	field := iter.ReadString()
+	str := iter.ReadStringAsBytes()
+	field := *(*string)(unsafe.Pointer(&str))
 	if iter.Error != nil {
 		return
 	}
-	iter.skipWhitespaces()
-	c := iter.readByte()
+	c := iter.nextToken()
 	if iter.Error != nil {
 		return
 	}
@@ -505,57 +623,49 @@ func (iter *Iterator) readObjectField() (ret string) {
 }
 
 func (iter *Iterator) ReadFloat32() (ret float32) {
-	str := make([]byte, 0, 10)
+	str := make([]byte, 0, 4)
 	for c := iter.readByte(); iter.Error == nil; c = iter.readByte() {
 		switch c {
 		case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			str = append(str, c)
+			continue
 		default:
 			iter.unreadByte()
-			val, err := strconv.ParseFloat(string(str), 32)
-			if err != nil {
-				iter.Error = err
-				return
-			}
-			return float32(val)
 		}
+		break
 	}
-	if iter.Error == io.EOF {
-		val, err := strconv.ParseFloat(string(str), 32)
-		if err != nil {
-			iter.Error = err
-			return
-		}
-		return float32(val)
+	if iter.Error != nil && iter.Error != io.EOF {
+		return
 	}
-	return
+	val, err := strconv.ParseFloat(*(*string)(unsafe.Pointer(&str)), 32)
+	if err != nil {
+		iter.Error = err
+		return
+	}
+	return float32(val)
 }
 
 func (iter *Iterator) ReadFloat64() (ret float64) {
-	str := make([]byte, 0, 10)
+	str := make([]byte, 0, 4)
 	for c := iter.readByte(); iter.Error == nil; c = iter.readByte() {
 		switch c {
 		case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			str = append(str, c)
+			continue
 		default:
 			iter.unreadByte()
-			val, err := strconv.ParseFloat(string(str), 64)
-			if err != nil {
-				iter.Error = err
-				return
-			}
-			return val
 		}
+		break
 	}
-	if iter.Error == io.EOF {
-		val, err := strconv.ParseFloat(string(str), 64)
-		if err != nil {
-			iter.Error = err
-			return
-		}
-		return val
+	if iter.Error != nil && iter.Error != io.EOF {
+		return
 	}
-	return
+	val, err := strconv.ParseFloat(*(*string)(unsafe.Pointer(&str)), 64)
+	if err != nil {
+		iter.Error = err
+		return
+	}
+	return val
 }
 
 func (iter *Iterator) ReadBool() (ret bool) {
@@ -584,25 +694,16 @@ func (iter *Iterator) ReadBool() (ret bool) {
 
 func (iter *Iterator) skipTrue() {
 	c := iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'r' {
 		iter.ReportError("skipTrue", "expect r of true")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'u' {
 		iter.ReportError("skipTrue", "expect u of true")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'e' {
 		iter.ReportError("skipTrue", "expect e of true")
 		return
@@ -611,33 +712,21 @@ func (iter *Iterator) skipTrue() {
 
 func (iter *Iterator) skipFalse() {
 	c := iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'a' {
 		iter.ReportError("skipFalse", "expect a of false")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'l' {
 		iter.ReportError("skipFalse", "expect l of false")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 's' {
 		iter.ReportError("skipFalse", "expect s of false")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'e' {
 		iter.ReportError("skipFalse", "expect e of false")
 		return
@@ -646,14 +735,8 @@ func (iter *Iterator) skipFalse() {
 
 func (iter *Iterator) ReadNull() (ret bool) {
 	c := iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c == 'n' {
 		iter.skipNull()
-		if iter.Error != nil {
-			return
-		}
 		return true
 	}
 	iter.unreadByte()
@@ -662,25 +745,16 @@ func (iter *Iterator) ReadNull() (ret bool) {
 
 func (iter *Iterator) skipNull() {
 	c := iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'u' {
 		iter.ReportError("skipNull", "expect u of null")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'l' {
 		iter.ReportError("skipNull", "expect l of null")
 		return
 	}
 	c = iter.readByte()
-	if iter.Error != nil {
-		return
-	}
 	if c != 'l' {
 		iter.ReportError("skipNull", "expect l of null")
 		return
@@ -720,9 +794,6 @@ func (iter *Iterator) skipString() {
 			return // end of string found
 		case '\\':
 			iter.readByte() // " after \\ does not count
-			if iter.Error != nil {
-				return
-			}
 		}
 	}
 }
@@ -741,8 +812,7 @@ func (iter *Iterator) skipNumber() {
 
 func (iter *Iterator) skipArray() {
 	for {
-		iter.skipWhitespaces()
-		c := iter.readByte()
+		c := iter.nextToken()
 		if iter.Error != nil {
 			return
 		}
@@ -751,11 +821,7 @@ func (iter *Iterator) skipArray() {
 		}
 		iter.unreadByte()
 		iter.Skip()
-		iter.skipWhitespaces()
-		c = iter.readByte()
-		if iter.Error != nil {
-			return
-		}
+		c = iter.nextToken()
 		switch c {
 		case ',':
 			iter.skipWhitespaces()
@@ -770,8 +836,7 @@ func (iter *Iterator) skipArray() {
 }
 
 func (iter *Iterator) skipObject() {
-	iter.skipWhitespaces()
-	c := iter.readByte()
+	c := iter.nextToken()
 	if iter.Error != nil {
 		return
 	}
@@ -781,32 +846,20 @@ func (iter *Iterator) skipObject() {
 		iter.unreadByte()
 	}
 	for {
-		iter.skipWhitespaces()
-		c := iter.readByte()
-		if iter.Error != nil {
-			return
-		}
+		c = iter.nextToken()
 		if c != '"' {
 			iter.ReportError("skipObject", `expects "`)
 			return
 		}
 		iter.skipString()
-		iter.skipWhitespaces()
-		c = iter.readByte()
-		if iter.Error != nil {
-			return
-		}
+		c = iter.nextToken()
 		if c != ':' {
 			iter.ReportError("skipObject", `expects :`)
 			return
 		}
 		iter.skipWhitespaces()
 		iter.Skip()
-		iter.skipWhitespaces()
-		c = iter.readByte()
-		if iter.Error != nil {
-			return
-		}
+		c = iter.nextToken()
 		switch c {
 		case ',':
 			iter.skipWhitespaces()

@@ -7,6 +7,7 @@ import (
 	"unsafe"
 	"sync/atomic"
 	"strings"
+	"io"
 )
 
 type Decoder interface {
@@ -122,6 +123,9 @@ func (decoder *stringNumberDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 		return
 	}
 	decoder.elemDecoder.decode(ptr, iter)
+	if iter.Error != nil {
+		return
+	}
 	c = iter.readByte()
 	if c != '"' {
 		iter.ReportError("stringNumberDecoder", `expect "`)
@@ -130,7 +134,7 @@ func (decoder *stringNumberDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 }
 
 type optionalDecoder struct {
-	valueType reflect.Type
+	valueType    reflect.Type
 	valueDecoder Decoder
 }
 
@@ -145,6 +149,7 @@ func (decoder *optionalDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 }
 
 type structDecoder struct {
+	type_ reflect.Type
 	fields map[string]Decoder
 }
 
@@ -157,20 +162,26 @@ func (decoder *structDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 			fieldDecoder.decode(ptr, iter)
 		}
 	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
 }
 
 type structFieldDecoder struct {
-	offset       uintptr
+	field       *reflect.StructField
 	fieldDecoder Decoder
 }
 
 func (decoder *structFieldDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
-	fieldPtr := uintptr(ptr) + decoder.offset
+	fieldPtr := uintptr(ptr) + decoder.field.Offset
 	decoder.fieldDecoder.decode(unsafe.Pointer(fieldPtr), iter)
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%s: %s", decoder.field.Name, iter.Error.Error())
+	}
 }
 
 type sliceDecoder struct {
-	sliceType    reflect.Type
+	sliceType   reflect.Type
 	elemType    reflect.Type
 	elemDecoder Decoder
 }
@@ -190,6 +201,9 @@ func (decoder *sliceDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 		growOne(slice, decoder.sliceType, decoder.elemType)
 		dataPtr := uintptr(slice.Data) + offset
 		decoder.elemDecoder.decode(unsafe.Pointer(dataPtr), iter)
+	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.sliceType, iter.Error.Error())
 	}
 }
 
@@ -215,8 +229,8 @@ func growOne(slice *sliceHeader, sliceType reflect.Type, elementType reflect.Typ
 	}
 	dst := unsafe.Pointer(reflect.MakeSlice(sliceType, newLen, newCap).Pointer())
 	originalBytesCount := uintptr(slice.Len) * elementType.Size()
-	srcPtr := (*[1<<30]byte)(slice.Data)
-	dstPtr := (*[1<<30]byte)(dst)
+	srcPtr := (*[1 << 30]byte)(slice.Data)
+	dstPtr := (*[1 << 30]byte)(dst)
 	for i := uintptr(0); i < originalBytesCount; i++ {
 		dstPtr[i] = srcPtr[i]
 	}
@@ -247,8 +261,36 @@ func getDecoderFromCache(cacheKey string) Decoder {
 	return cache[cacheKey]
 }
 
+var typeDecoders map[string]Decoder
+var fieldDecoders map[string]Decoder
+
 func init() {
+	typeDecoders = map[string]Decoder{}
+	fieldDecoders = map[string]Decoder{}
 	atomic.StorePointer(&DECODERS, unsafe.Pointer(&map[string]Decoder{}))
+}
+
+type DecoderFunc func(ptr unsafe.Pointer, iter *Iterator)
+
+type funcDecoder struct {
+	func_ DecoderFunc
+}
+
+func (decoder *funcDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	decoder.func_(ptr, iter)
+}
+
+func RegisterTypeDecoder(type_ string, func_ DecoderFunc) {
+	typeDecoders[type_] = &funcDecoder{func_}
+}
+
+func RegisterFieldDecoder(type_ string, field string, func_ DecoderFunc) {
+	fieldDecoders[fmt.Sprintf("%s/%s", type_, field)] = &funcDecoder{func_}
+}
+
+func ClearDecoders() {
+	typeDecoders = map[string]Decoder{}
+	fieldDecoders = map[string]Decoder{}
 }
 
 // emptyInterface is the header for an interface{} value.
@@ -293,6 +335,10 @@ func decoderOfType(type_ reflect.Type) (Decoder, error) {
 }
 
 func decoderOfPtr(type_ reflect.Type) (Decoder, error) {
+	typeDecoder := typeDecoders[type_.String()]
+	if typeDecoder != nil {
+		return typeDecoder, nil
+	}
 	switch type_.Kind() {
 	case reflect.String:
 		return &stringDecoder{}, nil
@@ -341,28 +387,32 @@ func decoderOfOptional(type_ reflect.Type) (Decoder, error) {
 	return &optionalDecoder{type_, decoder}, nil
 }
 
-
 func decoderOfStruct(type_ reflect.Type) (Decoder, error) {
 	fields := map[string]Decoder{}
 	for i := 0; i < type_.NumField(); i++ {
 		field := type_.Field(i)
+		fieldDecoderKey := fmt.Sprintf("%s/%s", type_.String(), field.Name)
+		decoder := fieldDecoders[fieldDecoderKey]
 		tagParts := strings.Split(field.Tag.Get("json"), ",")
 		jsonFieldName := tagParts[0]
 		if jsonFieldName == "" {
 			jsonFieldName = field.Name
 		}
-		decoder, err := decoderOfPtr(field.Type)
-		if err != nil {
-			return prefix(fmt.Sprintf("{%s}", field.Name)).addTo(decoder, err)
+		if decoder == nil {
+			var err error
+			decoder, err = decoderOfPtr(field.Type)
+			if err != nil {
+				return prefix(fmt.Sprintf("{%s}", field.Name)).addTo(decoder, err)
+			}
 		}
 		if len(tagParts) > 1 && tagParts[1] == "string" {
 			decoder = &stringNumberDecoder{decoder}
 		}
 		if jsonFieldName != "-" {
-			fields[jsonFieldName] = &structFieldDecoder{field.Offset, decoder}
+			fields[jsonFieldName] = &structFieldDecoder{&field, decoder}
 		}
 	}
-	return &structDecoder{fields}, nil
+	return &structDecoder{type_, fields}, nil
 }
 
 func decoderOfSlice(type_ reflect.Type) (Decoder, error) {

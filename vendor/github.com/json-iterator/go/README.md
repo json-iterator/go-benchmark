@@ -1,109 +1,100 @@
-# go
+# json iterator (jsoniter)
+
 faster than DOM, more usable than SAX/StAX
 
-# string
+# Why json iterator?
+
+## 1. It is faster
+
+jsoniter can work as drop in replacement for json.Unmarshal, with or without reflection. Unlike https://github.com/pquerna/ffjson
+jsoniter does not require `go generate`
+
+for performance numbers, see https://github.com/json-iterator/go-benchmark
+
+## 2. io.Reader as input
+
+jsoniter does not read the whole json into memory, it parse the document in a streaming way. Unlike https://github.com/pquerna/ffjson
+it requires []byte as input.
+
+## 3. Pull style api
+
+jsoniter can be used just like json.Unmarshal, for example
 
 ```
-func Benchmark_jsoniter_string(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		lexer := NewLexerWithArray([]byte(`"\ud83d\udc4a"`))
-		lexer.LexString()
-	}
+type StructOfTag struct {
+    field1 string `json:"field-1"`
+    field2 string `json:"-"`
+    field3 int `json:",string"`
+}
+
+struct_ := StructOfTag{}
+jsoniter.Unmarshal(`{"field-1": "hello", "field2": "", "field3": "100"}`, &struct_)
+```
+
+But it allows you to go down one level lower, to control the parsing process using pull style api (like StAX, if you
+know what I mean). Here is just a demo of what you can do
+
+```
+iter := jsoniter.ParseString(`[1,2,3]`)
+for iter.ReadArray() {
+  iter.ReadUint64()
 }
 ```
 
-10000000	       140 ns/op
+## 4. Customization
+
+Of course, you can use the low level pull api to do anything you like. But most of the time,
+reflection based api is fast enough. How to control the parsing process when we are using the reflection api?
+json.Unmarshaller is not flexible enough. Jsoniter provides much better customizability.
 
 ```
-func Benchmark_json_string(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		result := ""
-		json.Unmarshal([]byte(`"\ud83d\udc4a"`), &result)
-	}
-}
-````
-
-2000000	       710 ns/op (5x slower)
-
-# int
-
-```
-func Benchmark_jsoniter_int(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		lexer := NewLexerWithArray([]byte(`-100`))
-		lexer.LexInt64()
-	}
-}
-```
-
-30000000	        60.1 ns/op
-
-```
-func Benchmark_json_int(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		result := int64(0)
-		json.Unmarshal([]byte(`-100`), &result)
-	}
-}
-```
-
-3000000	       505 ns/op (8x slower)
-
-# array
-
-```
-func Benchmark_jsoniter_array(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		iter := ParseString(`[1,2,3]`)
-		for iter.ReadArray() {
-			iter.ReadUint64()
+func Test_customize_type_decoder(t *testing.T) {
+	RegisterTypeDecoder("time.Time", func(ptr unsafe.Pointer, iter *Iterator) {
+		t, err := time.ParseInLocation("2006-01-02 15:04:05", iter.ReadString(), time.UTC)
+		if err != nil {
+			iter.Error = err
+			return
 		}
+		*((*time.Time)(ptr)) = t
+	})
+	defer ClearDecoders()
+	val := time.Time{}
+	err := Unmarshal([]byte(`"2016-12-05 08:43:28"`), &val)
+	if err != nil {
+		t.Fatal(err)
+	}
+	year, month, day := val.Date()
+	if year != 2016 || month != 12 || day != 5 {
+		t.Fatal(val)
 	}
 }
 ```
 
-10000000	       189 ns/op
+there is no way to add json.Unmarshaller to time.Time as the type is not defined by you (type alias time.Time is not fun to use).
+Using jsoniter, we can.
 
 ```
-func Benchmark_json_array(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		result := []interface{}{}
-		json.Unmarshal([]byte(`[1,2,3]`), &result)
-	}
+type Tom struct {
+	field1 string
 }
-```
-1000000	      1327 ns/op
 
-# object
-
-```
-func Benchmark_jsoniter_object(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		iter := ParseString(`{"field1": "1", "field2": 2}`)
-		obj := TestObj{}
-		for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-			switch field {
-			case "field1":
-				obj.Field1 = iter.ReadString()
-			case "field2":
-				obj.Field2 = iter.ReadUint64()
-			default:
-				iter.ReportError("bind object", "unexpected field")
-			}
-		}
+func Test_customize_field_decoder(t *testing.T) {
+	RegisterFieldDecoder("jsoniter.Tom", "field1", func(ptr unsafe.Pointer, iter *Iterator) {
+		*((*string)(ptr)) = strconv.Itoa(iter.ReadInt())
+	})
+	defer ClearDecoders()
+	tom := Tom{}
+	err := Unmarshal([]byte(`{"field1": 100}`), &tom)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 ```
 
-5000000	       401 ns/op
+It is very common the input json has certain fields massed up. We want string, but it is int, etc. The old way is to
+define a struct of exact type like the json. Then we convert from one struct to a new struct. It is just too much work.
+Using jsoniter you can tweak the field conversion.
 
-```
-func Benchmark_json_object(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		result := TestObj{}
-		json.Unmarshal([]byte(`{"field1": "1", "field2": 2}`), &result)
-	}
-}
-```
+# Why not json iterator?
 
-1000000	      1318 ns/op
+jsoniter does not plan to support `map[string]interface{}`, period.

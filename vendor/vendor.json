@@ -3,10 +3,16 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "ayJC437BBffTc4Z1E83YTYsCbNc=",
+			"checksumSHA1": "UaIfY3h+yVesmmrVelu0R5nqTpA=",
+			"path": "github.com/buger/jsonparser",
+			"revision": "f04e003e4115787c6272636780bc206e5ffad6c4",
+			"revisionTime": "2016-09-22T14:59:46Z"
+		},
+		{
+			"checksumSHA1": "BCyU4In7Qg+ueQxL/6ryGtreb8s=",
 			"path": "github.com/json-iterator/go",
-			"revision": "cb86934dc85b797c2f0c2f231f3da7d377ef212c",
-			"revisionTime": "2016-12-04T14:50:53Z"
+			"revision": "c5576a8a3125757cbe57b1704a4a7351df94748c",
+			"revisionTime": "2016-12-06T12:09:19Z"
 		},
 		{
 			"checksumSHA1": "+ajZXCpD7wIHE4F9jD8/tO+shBo=",
