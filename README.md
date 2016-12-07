@@ -27,6 +27,8 @@ https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-it
 pull-api is fast, and reflection-api is not slow either.
 encoding/json is not that slow on i7-6700K, but much slower on cpu with smaller cache.
 
+![small](/small.png)
+
 # medium payload
 
 https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-iterator/go-benchmark/benchmark_medium_payload_test.go
