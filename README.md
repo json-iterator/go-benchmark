@@ -41,6 +41,8 @@ https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-it
 
 reflect-api even out-performed the hand written parser
 
+![medium](/medium.png)
+
 # large payload
 
 https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-iterator/go-benchmark/benchmark_large_payload_test.go
@@ -53,6 +55,8 @@ https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-it
 
 This is a pure counting usage. jsonparser is faster
 
+![large](/large.png)
+
 # large file
 
 test file used: https://github.com/json-iterator/test-data/blob/master/large-file.json
@@ -64,3 +68,5 @@ test file used: https://github.com/json-iterator/test-data/blob/master/large-fil
 | 19 allocs/op   | 5 allocs/op       | 272477 allocs/op |
 
 The difference here is because jsonparser take []byte as input, but jsoniter can take io.Reader as input.
+
+![large-file](/large-file.png)
