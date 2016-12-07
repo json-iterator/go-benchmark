@@ -9,10 +9,29 @@
 			"revisionTime": "2016-09-22T14:59:46Z"
 		},
 		{
-			"checksumSHA1": "UdKMfzF3j4J3KShogEJqmZNCz18=",
+			"checksumSHA1": "jXss1noBcpkQ7HSmIWQ3JapUqhY=",
 			"path": "github.com/json-iterator/go",
-			"revision": "46d96fb10537e329c592a4b5d8f96ad6fee6df36",
-			"revisionTime": "2016-12-06T15:51:29Z"
+			"revision": "71cdbd249cd99f6c9da7654d98c1def274c54ee8",
+			"revisionTime": "2016-12-07T00:49:52Z"
+		},
+		{
+			"checksumSHA1": "MMpvb4KPygskNyUnb3FWkP8TfGg=",
+			"path": "github.com/mailru/easyjson",
+			"revision": "304d3dc6fae850e62b7db2aee661d9d7b628cef0",
+			"revisionTime": "2016-12-06T21:33:15Z",
+			"tree": true
+		},
+		{
+			"checksumSHA1": "D1JbeyQhazKyXOokR5w7XrHWWw8=",
+			"path": "github.com/pquerna/ffjson/fflib/v1",
+			"revision": "a29c662791e4de7fc53a6cf209c9af657bba96f3",
+			"revisionTime": "2016-11-07T02:01:34Z"
+		},
+		{
+			"checksumSHA1": "iZHmHPBzKJiS6ROUaVOf4DVOhbA=",
+			"path": "github.com/pquerna/ffjson/fflib/v1/internal",
+			"revision": "a29c662791e4de7fc53a6cf209c9af657bba96f3",
+			"revisionTime": "2016-11-07T02:01:34Z"
 		},
 		{
 			"checksumSHA1": "+ajZXCpD7wIHE4F9jD8/tO+shBo=",

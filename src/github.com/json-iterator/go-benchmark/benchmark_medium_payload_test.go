@@ -5,6 +5,7 @@ import (
 	"testing"
 	"github.com/json-iterator/go"
 	"encoding/json"
+	"github.com/mailru/easyjson/jlexer"
 )
 
 func BenchmarkJsonParserEachKeyStructMedium(b *testing.B) {
@@ -138,5 +139,20 @@ func BenchmarkEncodingJsonStructMedium(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var data MediumPayload
 		json.Unmarshal(mediumFixture, &data)
+	}
+}
+
+func BenchmarkEasyJsonMedium(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		lexer := &jlexer.Lexer{Data: mediumFixture}
+		data := &MediumPayload{
+			Person: &CBPerson{
+				Name:     &CBName{},
+				Github:   &CBGithub{},
+				Gravatar: &CBGravatar{},
+			},
+		}
+		data.UnmarshalEasyJSON(lexer)
 	}
 }

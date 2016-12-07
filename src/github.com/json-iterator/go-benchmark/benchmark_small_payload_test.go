@@ -5,6 +5,7 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
 	"encoding/json"
+	"github.com/mailru/easyjson/jlexer"
 )
 
 func BenchmarkJsonParserSmall(b *testing.B) {
@@ -81,5 +82,14 @@ func BenchmarkEncodingJsonStructSmall(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var data SmallPayload
 		json.Unmarshal(smallFixture, &data)
+	}
+}
+
+func BenchmarkEasyJsonSmall(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		lexer := &jlexer.Lexer{Data: smallFixture}
+		data := new(SmallPayload)
+		data.UnmarshalEasyJSON(lexer)
 	}
 }

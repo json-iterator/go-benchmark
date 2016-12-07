@@ -36,7 +36,7 @@ func Test_jsoniter_skip(t *testing.T) {
 	}
 }
 
-func Benchmark_codec(b *testing.B) {
+func Benchmark_jsonparser(b *testing.B) {
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
 		file, _ := os.Open("/tmp/large-file.json")

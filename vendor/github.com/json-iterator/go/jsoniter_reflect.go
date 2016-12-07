@@ -149,7 +149,7 @@ func (decoder *optionalDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 }
 
 type structDecoder struct {
-	type_ reflect.Type
+	type_  reflect.Type
 	fields map[string]Decoder
 }
 
@@ -167,8 +167,122 @@ func (decoder *structDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
 	}
 }
 
+type skipDecoder struct {
+	type_ reflect.Type
+}
+
+func (decoder *skipDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	iter.Skip()
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
+}
+
+type oneFieldStructDecoder struct {
+	type_        reflect.Type
+	fieldName    string
+	fieldDecoder Decoder
+}
+
+func (decoder *oneFieldStructDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		if field == decoder.fieldName {
+			decoder.fieldDecoder.decode(ptr, iter)
+		} else {
+			iter.Skip()
+		}
+	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
+}
+
+type twoFieldsStructDecoder struct {
+	type_         reflect.Type
+	fieldName1    string
+	fieldDecoder1 Decoder
+	fieldName2    string
+	fieldDecoder2 Decoder
+}
+
+func (decoder *twoFieldsStructDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case decoder.fieldName1:
+			decoder.fieldDecoder1.decode(ptr, iter)
+		case decoder.fieldName2:
+			decoder.fieldDecoder2.decode(ptr, iter)
+		default:
+			iter.Skip()
+		}
+	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
+}
+
+type threeFieldsStructDecoder struct {
+	type_         reflect.Type
+	fieldName1    string
+	fieldDecoder1 Decoder
+	fieldName2    string
+	fieldDecoder2 Decoder
+	fieldName3    string
+	fieldDecoder3 Decoder
+}
+
+func (decoder *threeFieldsStructDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case decoder.fieldName1:
+			decoder.fieldDecoder1.decode(ptr, iter)
+		case decoder.fieldName2:
+			decoder.fieldDecoder2.decode(ptr, iter)
+		case decoder.fieldName3:
+			decoder.fieldDecoder3.decode(ptr, iter)
+		default:
+			iter.Skip()
+		}
+	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
+}
+
+type fourFieldsStructDecoder struct {
+	type_         reflect.Type
+	fieldName1    string
+	fieldDecoder1 Decoder
+	fieldName2    string
+	fieldDecoder2 Decoder
+	fieldName3    string
+	fieldDecoder3 Decoder
+	fieldName4    string
+	fieldDecoder4 Decoder
+}
+
+func (decoder *fourFieldsStructDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case decoder.fieldName1:
+			decoder.fieldDecoder1.decode(ptr, iter)
+		case decoder.fieldName2:
+			decoder.fieldDecoder2.decode(ptr, iter)
+		case decoder.fieldName3:
+			decoder.fieldDecoder3.decode(ptr, iter)
+		case decoder.fieldName4:
+			decoder.fieldDecoder4.decode(ptr, iter)
+		default:
+			iter.Skip()
+		}
+	}
+	if iter.Error != nil && iter.Error != io.EOF {
+		iter.Error = fmt.Errorf("%v: %s", decoder.type_, iter.Error.Error())
+	}
+}
+
 type structFieldDecoder struct {
-	field       *reflect.StructField
+	field        *reflect.StructField
 	fieldDecoder Decoder
 }
 
@@ -194,16 +308,43 @@ type sliceHeader struct {
 }
 
 func (decoder *sliceDecoder) decode(ptr unsafe.Pointer, iter *Iterator) {
-	slice := (*sliceHeader)(ptr)
-	slice.Len = 0
-	for iter.ReadArray() {
-		offset := uintptr(slice.Len) * decoder.elemType.Size()
-		growOne(slice, decoder.sliceType, decoder.elemType)
-		dataPtr := uintptr(slice.Data) + offset
-		decoder.elemDecoder.decode(unsafe.Pointer(dataPtr), iter)
-	}
+	decoder.doDecode(ptr, iter)
 	if iter.Error != nil && iter.Error != io.EOF {
 		iter.Error = fmt.Errorf("%v: %s", decoder.sliceType, iter.Error.Error())
+	}
+}
+
+func (decoder *sliceDecoder) doDecode(ptr unsafe.Pointer, iter *Iterator) {
+	slice := (*sliceHeader)(ptr)
+	reuseSlice(slice, decoder.sliceType, 4)
+	if !iter.ReadArray() {
+		return
+	}
+	offset := uintptr(0)
+	decoder.elemDecoder.decode(unsafe.Pointer(uintptr(slice.Data) + offset), iter)
+	if !iter.ReadArray() {
+		slice.Len = 1
+		return
+	}
+	offset += decoder.elemType.Size()
+	decoder.elemDecoder.decode(unsafe.Pointer(uintptr(slice.Data) + offset), iter)
+	if !iter.ReadArray() {
+		slice.Len = 2
+		return
+	}
+	offset += decoder.elemType.Size()
+	decoder.elemDecoder.decode(unsafe.Pointer(uintptr(slice.Data) + offset), iter)
+	if !iter.ReadArray() {
+		slice.Len = 3
+		return
+	}
+	offset += decoder.elemType.Size()
+	decoder.elemDecoder.decode(unsafe.Pointer(uintptr(slice.Data) + offset), iter)
+	slice.Len = 4
+	for iter.ReadArray() {
+		growOne(slice, decoder.sliceType, decoder.elemType)
+		offset += decoder.elemType.Size()
+		decoder.elemDecoder.decode(unsafe.Pointer(uintptr(slice.Data) + offset), iter)
 	}
 }
 
@@ -236,6 +377,15 @@ func growOne(slice *sliceHeader, sliceType reflect.Type, elementType reflect.Typ
 	}
 	slice.Len = newLen
 	slice.Cap = newCap
+	slice.Data = dst
+}
+
+func reuseSlice(slice *sliceHeader, sliceType reflect.Type, expectedCap int) {
+	if expectedCap <= slice.Cap {
+		return
+	}
+	dst := unsafe.Pointer(reflect.MakeSlice(sliceType, 0, expectedCap).Pointer())
+	slice.Cap = expectedCap
 	slice.Data = dst
 }
 
@@ -411,6 +561,77 @@ func decoderOfStruct(type_ reflect.Type) (Decoder, error) {
 		if jsonFieldName != "-" {
 			fields[jsonFieldName] = &structFieldDecoder{&field, decoder}
 		}
+	}
+	switch len(fields) {
+	case 0:
+		return &skipDecoder{type_}, nil
+	case 1:
+		for fieldName, fieldDecoder := range fields {
+			return &oneFieldStructDecoder{type_, fieldName, fieldDecoder}, nil
+		}
+	case 2:
+		var fieldName1 string
+		var fieldName2 string
+		var fieldDecoder1 Decoder
+		var fieldDecoder2 Decoder
+		for fieldName, fieldDecoder := range fields {
+			if fieldName1 == "" {
+				fieldName1 = fieldName
+				fieldDecoder1 = fieldDecoder
+			} else {
+				fieldName2 = fieldName
+				fieldDecoder2 = fieldDecoder
+			}
+		}
+		return &twoFieldsStructDecoder{type_, fieldName1, fieldDecoder1, fieldName2, fieldDecoder2}, nil
+	case 3:
+		var fieldName1 string
+		var fieldName2 string
+		var fieldName3 string
+		var fieldDecoder1 Decoder
+		var fieldDecoder2 Decoder
+		var fieldDecoder3 Decoder
+		for fieldName, fieldDecoder := range fields {
+			if fieldName1 == "" {
+				fieldName1 = fieldName
+				fieldDecoder1 = fieldDecoder
+			} else if fieldName2 == "" {
+				fieldName2 = fieldName
+				fieldDecoder2 = fieldDecoder
+			} else {
+				fieldName3 = fieldName
+				fieldDecoder3 = fieldDecoder
+			}
+		}
+		return &threeFieldsStructDecoder{type_,
+			fieldName1, fieldDecoder1, fieldName2, fieldDecoder2, fieldName3, fieldDecoder3}, nil
+	case 4:
+		var fieldName1 string
+		var fieldName2 string
+		var fieldName3 string
+		var fieldName4 string
+		var fieldDecoder1 Decoder
+		var fieldDecoder2 Decoder
+		var fieldDecoder3 Decoder
+		var fieldDecoder4 Decoder
+		for fieldName, fieldDecoder := range fields {
+			if fieldName1 == "" {
+				fieldName1 = fieldName
+				fieldDecoder1 = fieldDecoder
+			} else if fieldName2 == "" {
+				fieldName2 = fieldName
+				fieldDecoder2 = fieldDecoder
+			} else if fieldName3 == "" {
+				fieldName3 = fieldName
+				fieldDecoder3 = fieldDecoder
+			} else {
+				fieldName4 = fieldName
+				fieldDecoder4 = fieldDecoder
+			}
+		}
+		return &fourFieldsStructDecoder{type_,
+			fieldName1, fieldDecoder1, fieldName2, fieldDecoder2, fieldName3, fieldDecoder3,
+			fieldName4, fieldDecoder4}, nil
 	}
 	return &structDecoder{type_, fields}, nil
 }
