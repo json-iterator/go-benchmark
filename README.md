@@ -45,11 +45,11 @@ reflect-api even out-performed the hand written parser
 
 https://github.com/json-iterator/go-benchmark/blob/master/src/github.com/json-iterator/go-benchmark/benchmark_large_payload_test.go
 
-| jsonparser  | jsoniter pull-api |
-| ---         | ---               |
-| 38334 ns/op | 38463 ns/op       |
-| 0 B/op      | 0 B/op            |
-| 0 allocs/op | 0 allocs/op       |
+| jsonparser  | jsoniter pull-api | encoding/json |
+| ---         | ---               | ---           |
+| 38334 ns/op | 38463 ns/op       | 290778 ns/op  |
+| 0 B/op      | 0 B/op            | 2128 B/op     |
+| 0 allocs/op | 0 allocs/op       | 46 allocs/op  |
 
 This is a pure counting usage. jsonparser is faster
 

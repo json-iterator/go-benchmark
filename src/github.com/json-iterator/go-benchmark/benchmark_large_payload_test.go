@@ -4,6 +4,7 @@ import (
 	"testing"
 	"github.com/buger/jsonparser"
 	"github.com/json-iterator/go"
+	"encoding/json"
 )
 
 func BenchmarkJsonParserLarge(b *testing.B) {
@@ -41,5 +42,13 @@ func BenchmarkJsoniterLarge(b *testing.B) {
 			}
 			break
 		}
+	}
+}
+
+func BenchmarkEncodingJsonLarge(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		payload := &LargePayload{}
+		json.Unmarshal(largeFixture, payload)
 	}
 }
