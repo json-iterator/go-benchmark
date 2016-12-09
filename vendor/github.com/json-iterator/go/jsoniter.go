@@ -6,6 +6,7 @@ import (
 	"unicode/utf16"
 	"strconv"
 	"unsafe"
+	"encoding/base64"
 )
 
 var digits []byte
@@ -76,7 +77,7 @@ func (iter *Iterator) skipWhitespaces() {
 		for i := iter.head; i < iter.tail; i++ {
 			c := iter.buf[i]
 			switch c {
-			case ' ', '\n', '\t', 'r':
+			case ' ', '\n', '\t', '\r':
 				continue
 			}
 			iter.head = i
@@ -86,6 +87,19 @@ func (iter *Iterator) skipWhitespaces() {
 			return
 		}
 	}
+}
+
+func (iter *Iterator) skipWhitespacesWithoutLoadMore() bool {
+	for i := iter.head; i < iter.tail; i++ {
+		c := iter.buf[i]
+		switch c {
+		case ' ', '\n', '\t', '\r':
+			continue
+		}
+		iter.head = i
+		return false
+	}
+	return true
 }
 
 func (iter *Iterator) nextToken() byte {
@@ -123,7 +137,7 @@ func (iter *Iterator) CurrentBuffer() string {
 	if peekStart < 0 {
 		peekStart = 0
 	}
-	return fmt.Sprintf("parsing %v ...%s... at %s", iter.head,
+	return fmt.Sprintf("parsing %v ...|%s|... at %s", iter.head,
 		string(iter.buf[peekStart: iter.head]), string(iter.buf[0:iter.tail]))
 }
 
@@ -133,6 +147,8 @@ func (iter *Iterator) readByte() (ret byte) {
 			ret = iter.buf[iter.head]
 			iter.head++
 			return ret
+		} else {
+			return 0
 		}
 	}
 	ret = iter.buf[iter.head]
@@ -504,73 +520,6 @@ func (iter *Iterator) ReadArray() (ret bool) {
 	}
 }
 
-func (iter *Iterator) ReadArrayCB(cb func()) {
-	c := iter.nextToken()
-	if c == 'n' {
-		iter.skipUntilBreak()
-		return // null
-	}
-	if c != '[' {
-		iter.ReportError("ReadArrayCB", "expect [ or n")
-		return
-	}
-	c = iter.nextToken()
-	if c == ']' {
-		return // []
-	} else {
-		iter.unreadByte()
-	}
-	for {
-		if iter.Error != nil {
-			return
-		}
-		cb()
-		c = iter.nextToken()
-		if c == ']' {
-			return
-		}
-		if c != ',' {
-			iter.ReportError("ReadArrayCB", "expect , or ]")
-			return
-		}
-		iter.skipWhitespaces()
-	}
-}
-
-func (iter *Iterator) ReadObjectCB(cb func(string)) {
-	c := iter.nextToken()
-	if c == 'n' {
-		iter.skipUntilBreak()
-		return // null
-	}
-	if c != '{' {
-		iter.ReportError("ReadObjectCB", "expect { or n")
-		return
-	}
-	c = iter.nextToken()
-	if c == '}' {
-		return // []
-	} else {
-		iter.unreadByte()
-	}
-	for {
-		iter.skipWhitespaces()
-		field := iter.readObjectField()
-		if iter.Error != nil {
-			return
-		}
-		cb(field)
-		c = iter.nextToken()
-		if c == '}' {
-			return // end of object
-		}
-		if c != ',' {
-			iter.ReportError("ReadObjectCB", `expect ,`)
-			return
-		}
-	}
-}
-
 func (iter *Iterator) ReadObject() (ret string) {
 	c := iter.nextToken()
 	if iter.Error != nil {
@@ -613,27 +562,54 @@ func (iter *Iterator) ReadObject() (ret string) {
 
 func (iter *Iterator) readObjectField() (ret string) {
 	str := iter.ReadStringAsBytes()
-	field := *(*string)(unsafe.Pointer(&str))
-	c := iter.nextToken()
-	if c != ':' {
+	if iter.skipWhitespacesWithoutLoadMore() {
+		if ret == "" {
+			ret = string(str);
+		}
+		if !iter.loadMore() {
+			return
+		}
+	}
+	if iter.buf[iter.head] != ':' {
 		iter.ReportError("ReadObject", "expect : after object field")
 		return
 	}
-	iter.skipWhitespaces()
-	return field
+	iter.head++
+	if iter.skipWhitespacesWithoutLoadMore() {
+		if ret == "" {
+			ret = string(str);
+		}
+		if !iter.loadMore() {
+			return
+		}
+	}
+	if ret == "" {
+		return *(*string)(unsafe.Pointer(&str))
+	}
+	return ret
 }
 
 func (iter *Iterator) ReadFloat32() (ret float32) {
-	str := make([]byte, 0, 4)
-	for c := iter.readByte(); iter.Error == nil; c = iter.readByte() {
-		switch c {
-		case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			str = append(str, c)
-			continue
-		default:
-			iter.unreadByte()
+	strBuf := [8]byte{}
+	str := strBuf[0:0]
+	hasMore := true
+	for(hasMore) {
+		for i := iter.head; i < iter.tail; i++ {
+			c := iter.buf[i]
+			switch c {
+			case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+				str = append(str, c)
+				continue
+			default:
+				hasMore = false
+				break
+			}
 		}
-		break
+		if hasMore {
+			if !iter.loadMore() {
+				break
+			}
+		}
 	}
 	if iter.Error != nil && iter.Error != io.EOF {
 		return
@@ -647,16 +623,26 @@ func (iter *Iterator) ReadFloat32() (ret float32) {
 }
 
 func (iter *Iterator) ReadFloat64() (ret float64) {
-	str := make([]byte, 0, 4)
-	for c := iter.readByte(); iter.Error == nil; c = iter.readByte() {
-		switch c {
-		case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			str = append(str, c)
-			continue
-		default:
-			iter.unreadByte()
+	strBuf := [8]byte{}
+	str := strBuf[0:0]
+	hasMore := true
+	for(hasMore) {
+		for i := iter.head; i < iter.tail; i++ {
+			c := iter.buf[i]
+			switch c {
+			case '-', '+', '.', 'e', 'E', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+				str = append(str, c)
+				continue
+			default:
+				hasMore = false
+				break
+			}
 		}
-		break
+		if hasMore {
+			if !iter.loadMore() {
+				break
+			}
+		}
 	}
 	if iter.Error != nil && iter.Error != io.EOF {
 		return
@@ -685,6 +671,21 @@ func (iter *Iterator) ReadBool() (ret bool) {
 		iter.ReportError("ReadBool", "expect t or f")
 		return
 	}
+}
+
+func (iter *Iterator) ReadBase64() (ret []byte) {
+	src := iter.ReadStringAsBytes()
+	if iter.Error != nil {
+		return
+	}
+	b64 := base64.StdEncoding
+	ret = make([]byte, b64.DecodedLen(len(src)))
+	n, err := b64.Decode(ret, src)
+	if err != nil {
+		iter.Error = err
+		return
+	}
+	return ret[:n]
 }
 
 func (iter *Iterator) ReadNull() (ret bool) {
