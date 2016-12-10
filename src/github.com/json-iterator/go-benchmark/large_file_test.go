@@ -23,16 +23,18 @@ func Test_jsonparser_skip(t *testing.T) {
 }
 
 func Test_jsoniter_skip(t *testing.T) {
-	file, _ := os.Open("/tmp/large-file.json")
-	iter := jsoniter.Parse(file, 4096)
-	total := 0
-	for iter.ReadArray() {
-		iter.Skip()
-		total++
-	}
-	file.Close()
-	if total != 11351 {
-		t.Fatal(total)
+	for i := 0; i < 100; i++ {
+		file, _ := os.Open("/tmp/large-file.json")
+		iter := jsoniter.Parse(file, 4096)
+		total := 0
+		for iter.ReadArray() {
+			iter.Skip()
+			total++
+		}
+		file.Close()
+		if total != 11351 {
+			t.Fatal(total)
+		}
 	}
 }
 

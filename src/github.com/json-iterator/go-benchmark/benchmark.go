@@ -166,7 +166,7 @@ type DSTopic struct {
 }
 
 type DSTopicsList struct {
-	Topics        []*DSTopic `json:"topics"`
+	Topics        []struct{} `json:"topics"`
 	MoreTopicsUrl string `json:"-"`
 }
 
