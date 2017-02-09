@@ -60,7 +60,7 @@ func BenchmarkJsoniterStructMedium(b *testing.B) {
 				Gravatar: &CBGravatar{},
 			},
 		}
-		iter.Reuse(mediumFixture)
+		iter.ResetBytes(mediumFixture)
 		for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 			switch field {
 			case "company":
@@ -126,8 +126,8 @@ func BenchmarkJsoniterReflectStructMedium(b *testing.B) {
 				Gravatar: &CBGravatar{},
 			},
 		}
-		iter.Reuse(mediumFixture)
-		iter.Read(&data)
+		iter.ResetBytes(mediumFixture)
+		iter.ReadVal(&data)
 	}
 }
 

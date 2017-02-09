@@ -3,10 +3,49 @@
 	"ignore": "test",
 	"package": [
 		{
+			"path": "-insecure",
+			"revision": ""
+		},
+		{
+			"checksumSHA1": "iYwcP0aXWQx5s2+ltOU0smXL58g=",
+			"origin": "github.com/apache/thrift/lib/go/thrift",
+			"path": "git.apache.org/thrift.git/lib/go/thrift",
+			"revision": "a3d6be906b339ce4e55e8fb8d98ff11480792949",
+			"revisionTime": "2017-02-04T05:23:55Z"
+		},
+		{
+			"origin": "git.apache.org/thrift.git/lib/go/thrift",
+			"path": "github.com/apache/thrift/lib/go",
+			"revision": ""
+		},
+		{
+			"checksumSHA1": "g+1RRk1Ar1T0GhrymGM/YDGU76U=",
+			"origin": "git.apache.org/thrift.git/lib/go/thrift",
+			"path": "github.com/apache/thrift/lib/go/thrift",
+			"revision": "a3d6be906b339ce4e55e8fb8d98ff11480792949",
+			"revisionTime": "2017-02-04T05:23:55Z"
+		},
+		{
+			"path": "github.com/apache/thrift/tree/master/lib/go",
+			"revision": ""
+		},
+		{
 			"checksumSHA1": "UaIfY3h+yVesmmrVelu0R5nqTpA=",
 			"path": "github.com/buger/jsonparser",
 			"revision": "f04e003e4115787c6272636780bc206e5ffad6c4",
 			"revisionTime": "2016-09-22T14:59:46Z"
+		},
+		{
+			"checksumSHA1": "6ZxSmrIx3Jd15aou16oG0HPylP4=",
+			"path": "github.com/gogo/protobuf/proto",
+			"revision": "9c5b7bafbfccf2b40d274e0496f3a09418a87af4",
+			"revisionTime": "2017-02-07T10:23:50Z"
+		},
+		{
+			"checksumSHA1": "kBeNcaKk56FguvPSUCEaH6AxpRc=",
+			"path": "github.com/golang/protobuf/proto",
+			"revision": "8ee79997227bf9b34611aee7946ae64735e6fd93",
+			"revisionTime": "2016-11-17T03:31:26Z"
 		},
 		{
 			"checksumSHA1": "Norwc7s2xBkLrySxynMj6+K+b3Y=",

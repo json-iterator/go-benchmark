@@ -22,7 +22,7 @@ func BenchmarkJsoniterLarge(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		iter.Reuse(largeFixture)
+		iter.ResetBytes(largeFixture)
 		count := 0
 		for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 			if "topics" != field {

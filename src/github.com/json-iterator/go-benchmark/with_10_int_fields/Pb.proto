@@ -1,0 +1,14 @@
+syntax = "proto3";
+option optimize_for = SPEED;
+message PbTestObject {
+  int32 field1 = 1;
+  int32 field2 = 2;
+  int32 field3 = 3;
+  int32 field4 = 4;
+  int32 field5 = 5;
+  int32 field6 = 6;
+  int32 field7 = 7;
+  int32 field8 = 8;
+  int32 field9 = 9;
+  int32 field10 = 10;
+}

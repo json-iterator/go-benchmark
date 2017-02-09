@@ -45,7 +45,7 @@ func BenchmarkJsnoiterPullSmall(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var data SmallPayload
-		iter.Reuse(smallFixture)
+		iter.ResetBytes(smallFixture)
 		for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 			switch field {
 			case "uuid":
@@ -69,7 +69,7 @@ func BenchmarkJsnoiterReflectSmall(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var data SmallPayload
-		iter.Reuse(smallFixture)
+		iter.ResetBytes(smallFixture)
 		jsoniter.Unmarshal(smallFixture, &data)
 	}
 }

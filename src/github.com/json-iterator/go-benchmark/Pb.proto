@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package go_benchmark;
+option optimize_for = SPEED;
+message PbTestObject {
+  string field1 = 1;
+  string field2 = 2;
+  string field3 = 3;
+  string field4 = 4;
+  string field5 = 5;
+  string field6 = 6;
+  string field7 = 7;
+  string field8 = 8;
+  string field9 = 9;
+  string field10 = 10;
+}
+
+
+message With2Fields {
+  string field1 = 1;
+  string field2 = 2;
+}
