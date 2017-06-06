@@ -1,158 +1,70 @@
 package go_benchmark
 
 import (
-	"github.com/buger/jsonparser"
 	"testing"
 	"github.com/json-iterator/go"
 	"encoding/json"
 	"github.com/mailru/easyjson/jlexer"
+	"bytes"
+	"github.com/mailru/easyjson/jwriter"
 )
-
-func BenchmarkJsonParserEachKeyStructMedium(b *testing.B) {
-	paths := [][]string{
-		[]string{"person", "name", "fullName"},
-		[]string{"person", "github", "followers"},
-		[]string{"company"},
-		[]string{"person", "gravatar", "avatars"},
-	}
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		data := MediumPayload{
-			Person: &CBPerson{
-				Name:     &CBName{},
-				Github:   &CBGithub{},
-				Gravatar: &CBGravatar{},
-			},
-		}
-
-		jsonparser.EachKey(mediumFixture, func(idx int, value []byte, vt jsonparser.ValueType, err error) {
-			switch idx {
-			case 0:
-				data.Person.Name.FullName, _ = jsonparser.ParseString(value)
-			case 1:
-				v, _ := jsonparser.ParseInt(value)
-				data.Person.Github.Followers = int(v)
-			case 2:
-				v, _ := jsonparser.ParseString(value)
-				data.Company = v
-			case 3:
-				var avatars []*CBAvatar
-				jsonparser.ArrayEach(value, func(avalue []byte, dataType jsonparser.ValueType, offset int, err error) {
-					url, _ := jsonparser.GetString(avalue, "url")
-					avatars = append(avatars, &CBAvatar{Url: url})
-				})
-				data.Person.Gravatar.Avatars = avatars
-			}
-		}, paths...)
-	}
-}
-
-func BenchmarkJsoniterStructMedium(b *testing.B) {
-	iter := jsoniter.ParseBytes(mediumFixture)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		data := MediumPayload{
-			Person: &CBPerson{
-				Name:     &CBName{},
-				Github:   &CBGithub{},
-				Gravatar: &CBGravatar{},
-			},
-		}
-		iter.ResetBytes(mediumFixture)
-		for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-			switch field {
-			case "company":
-				data.Company = iter.ReadString()
-			case "person":
-				for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-					switch field {
-					case "name":
-						for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-							if "fullName" != field {
-								iter.Skip()
-								continue
-							}
-							data.Person.Name.FullName = iter.ReadString()
-						}
-					case "github":
-						for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-							if "followers" != field {
-								iter.Skip()
-								continue
-							}
-							data.Person.Github.Followers = iter.ReadInt()
-						}
-					case "gravatar":
-						for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-							if "avatars" != field {
-								iter.Skip()
-								continue
-							}
-							var avatars []*CBAvatar
-							for iter.ReadArray() {
-								for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-									if "url" != field {
-										iter.Skip()
-										continue
-									}
-									avatars = append(avatars, &CBAvatar{Url: iter.ReadString()})
-								}
-							}
-							data.Person.Gravatar.Avatars = avatars
-						}
-					default:
-						iter.Skip()
-					}
-				}
-			default:
-				iter.Skip()
-			}
-		}
-	}
-}
-
-
-func BenchmarkJsoniterReflectStructMedium(b *testing.B) {
-	iter := jsoniter.ParseBytes(mediumFixture)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		data := MediumPayload{
-			Person: &CBPerson{
-				Name:     &CBName{},
-				Github:   &CBGithub{},
-				Gravatar: &CBGravatar{},
-			},
-		}
-		iter.ResetBytes(mediumFixture)
-		iter.ReadVal(&data)
-	}
-}
 
 /*
    encoding/json
 */
-func BenchmarkEncodingJsonStructMedium(b *testing.B) {
+func BenchmarkDecodeStdStructMedium(b *testing.B) {
 	b.ReportAllocs()
+	var data MediumPayload
 	for i := 0; i < b.N; i++ {
-		var data MediumPayload
 		json.Unmarshal(mediumFixture, &data)
 	}
 }
 
-func BenchmarkEasyJsonMedium(b *testing.B) {
+func BenchmarkEncodeStdStructMedium(b *testing.B) {
+	var data MediumPayload
+	json.Unmarshal(mediumFixture, &data)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
+		json.Marshal(data)
+	}
+}
+
+func BenchmarkDecodeJsoniterStructMedium(b *testing.B) {
+	b.ReportAllocs()
+	var data MediumPayload
+	for i := 0; i < b.N; i++ {
+		jsoniter.Unmarshal(mediumFixture, &data)
+	}
+}
+
+func BenchmarkEncodeJsoniterStructMedium(b *testing.B) {
+	var data MediumPayload
+	jsoniter.Unmarshal(mediumFixture, &data)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		jsoniter.Marshal(data)
+	}
+}
+
+func BenchmarkDecodeEasyJsonMedium(b *testing.B) {
+	b.ReportAllocs()
+	var data MediumPayload
+	for i := 0; i < b.N; i++ {
 		lexer := &jlexer.Lexer{Data: mediumFixture}
-		data := &MediumPayload{
-			Person: &CBPerson{
-				Name:     &CBName{},
-				Github:   &CBGithub{},
-				Gravatar: &CBGravatar{},
-			},
-		}
 		data.UnmarshalEasyJSON(lexer)
+	}
+}
+
+func BenchmarkEncodeEasyJsonMedium(b *testing.B) {
+	var data MediumPayload
+	lexer := &jlexer.Lexer{Data: mediumFixture}
+	data.UnmarshalEasyJSON(lexer)
+	b.ReportAllocs()
+	buf := &bytes.Buffer{}
+	for i := 0; i < b.N; i++ {
+		writer := &jwriter.Writer{}
+		data.MarshalEasyJSON(writer)
+		buf.Reset()
+		writer.DumpTo(buf)
 	}
 }
