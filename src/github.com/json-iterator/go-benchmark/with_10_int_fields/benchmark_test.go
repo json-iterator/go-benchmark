@@ -29,7 +29,8 @@ func Benchmark_protobuf_write(b *testing.B) {
 
 func Benchmark_jsoniter_read(b *testing.B) {
 	b.ReportAllocs()
-	obj := PbTestObject{31415926, 61415923, 31415269, 53141926, 13145926, 43115926, 31419265, 23141596, 43161592, 112}
+	//obj := PbTestObject{31415926, 61415923, 31415269, 53141926, 13145926, 43115926, 31419265, 23141596, 43161592, 112}
+	obj := PbTestObject{112, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	data, _ := jsoniter.Marshal(&obj)
 	iter := jsoniter.NewIterator()
 	for i := 0; i < b.N; i++ {
@@ -100,13 +101,18 @@ func Benchmark_thrift(b *testing.B) {
 
 func Benchmark_easyjson(b *testing.B) {
 	obj := PbTestObject{31415926, 61415923, 31415269, 53141926, 13145926, 43115926, 31419265, 23141596, 43161592, 112}
+	//obj := PbTestObject{112, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	writer := &jwriter.Writer{}
 	obj.MarshalEasyJSON(writer)
-	data := writer.Buffer.Buf
+	buf := &bytes.Buffer{}
+	writer.DumpTo(buf)
 	b.Run("easyjson-read", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			obj.UnmarshalJSON(data)
+			err := obj.UnmarshalJSON(buf.Bytes())
+			if err != nil {
+				b.Error(err)
+			}
 		}
 	})
 }

@@ -54,10 +54,10 @@
 			"revisionTime": "2016-12-09T05:08:14Z"
 		},
 		{
-			"checksumSHA1": "MMpvb4KPygskNyUnb3FWkP8TfGg=",
+			"checksumSHA1": "0VSP1Gr8E6TLRU7au2L/6GWRaHA=",
 			"path": "github.com/mailru/easyjson",
-			"revision": "304d3dc6fae850e62b7db2aee661d9d7b628cef0",
-			"revisionTime": "2016-12-06T21:33:15Z",
+			"revision": "dffba8d13bbd998df17d8557570cdea0624b9d1d",
+			"revisionTime": "2017-05-15T18:52:49Z",
 			"tree": true
 		},
 		{
